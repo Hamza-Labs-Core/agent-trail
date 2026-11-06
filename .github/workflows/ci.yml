@@ -29,6 +29,10 @@ jobs:
         run: for f in .claude-plugin/*.json hooks/hooks.json; do python3 -m json.tool "$f" > /dev/null; done
       - name: shellcheck
         run: shellcheck bin/trail hooks/run-hook.sh
+      - name: actionlint
+        run: |
+          bash <(curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/v1.7.7/scripts/download-actionlint.bash) 1.7.7
+          ./actionlint -color
 
   test:
     strategy:
@@ -46,7 +50,7 @@ jobs:
       - uses: actions/setup-python@v6.2.0
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -q pytest==8.3.5
+      - run: python -m pip install -q pytest==8.3.5 pyyaml==6.0.2
       - run: python -m pytest
 
   plugin:
@@ -81,7 +85,8 @@ jobs:
           working-directory: ${{ runner.temp }}/sample
           fetch-tags: "false"
       - name: A bad event
-        run: printf -- '---\nschema: 1\n---\n\n## What happened\nx\n' > "$RUNNER_TEMP/sample/docs/trail/events/0002-bad.md"
+        run: |
+          printf -- '---\nschema: 1\n---\n\n## What happened\nx\n' > "$RUNNER_TEMP/sample/docs/trail/events/0002-bad.md"
       - name: The Action fails on a bad trail
         id: bad
         continue-on-error: true

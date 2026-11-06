@@ -128,3 +128,9 @@ def test_the_state_dir_follows_the_environment(monkeypatch: pytest.MonkeyPatch, 
     assert hook.state_dir() == tmp_path / "data"
     monkeypatch.setenv("CLAUDE_TRAIL_HOOK_DIR", str(tmp_path / "mine"))
     assert hook.state_dir() == tmp_path / "mine"
+
+
+def test_the_workflows_and_the_action_are_yaml() -> None:
+    yaml = pytest.importorskip("yaml")
+    for rel in [".github/workflows/ci.yml", ".github/workflows/release.yml", "action.yml"]:
+        assert isinstance(yaml.safe_load((ROOT / rel).read_text(encoding="utf-8")), dict), rel
