@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling>=1.24"]
+build-backend = "hatchling.build"
+
+[project]
+name = "claude-trail"
+version = "0.1.0"
+description = "Keep what Claude sessions learn in a repository: per-PR events, per-tag snapshots, and their checker"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Hamza Labs" }]
+requires-python = ">=3.9"
+dependencies = []  # none at run time, by design: the hook runs on the machine's python3
+keywords = ["claude", "claude-code", "trail", "lessons", "pull-requests"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Topic :: Software Development :: Quality Assurance",
+]
+
+[project.urls]
+Homepage = "https://github.com/Hamza-Labs-Core/claude-trail"
+Issues = "https://github.com/Hamza-Labs-Core/claude-trail/issues"
+
+[project.scripts]
+trail = "claude_trail.cli:main"
+claude-trail = "claude_trail.cli:main"  # so `uvx claude-trail check` works
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_trail"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/claude_trail", "tests", "README.md", "LICENSE", "pyproject.toml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]
+addopts = "-q -p no:cacheprovider"
+
+[tool.ruff]
+line-length = 130
+
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003", "RUF005", "SIM105", "SIM108", "UP007", "UP045"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["claude_trail", "conftest"]
+
+[tool.mypy]
+python_version = "3.12"  # the stdlib stubs with tomllib; the code itself runs on 3.9+
+strict = true
+files = ["src"]

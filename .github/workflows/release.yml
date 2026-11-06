@@ -1,0 +1,72 @@
+name: Release
+
+# A v* tag (vX.Y.Z): build the package, attach it to a GitHub release, move the major tag
+# (v0) to it so `uses: Hamza-Labs-Core/claude-trail@v0` follows, and publish to PyPI once the
+# repository variable PYPI_PUBLISH is "true" (after the trusted publisher is set up: README).
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: The tag is the package's version
+        run: |
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/claude_trail/__init__.py)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME, package $v"; exit 1; }
+          grep -q "\"version\": \"$v\"" .claude-plugin/plugin.json || { echo "::error::plugin.json is not $v"; exit 1; }
+      - run: uv build
+      - uses: actions/upload-artifact@v7.0.1
+        with:
+          name: dist
+          path: dist/
+
+  github-release:
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - name: The release, with the wheel and sdist
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 \
+            || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+      - name: Move the major tag
+        run: |
+          major=${GITHUB_REF_NAME%%.*}
+          git tag -f "$major" "$GITHUB_SHA"
+          git push -f origin "refs/tags/$major"
+
+  pypi:
+    needs: build
+    if: vars.PYPI_PUBLISH == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: pypi
+      url: https://pypi.org/p/claude-trail
+    permissions:
+      id-token: write  # trusted publishing: no token is stored anywhere
+    steps:
+      - uses: actions/download-artifact@v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@v1.13.0

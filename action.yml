@@ -1,0 +1,99 @@
+name: Claude trail
+description: Check a repository's Claude trail (events and snapshots), and optionally comment on a merged pull request that has no event
+author: Hamza Labs
+branding:
+  icon: book-open
+  color: purple
+
+inputs:
+  command:
+    description: >-
+      The trail command to run (`check`, `missing`, `index`, ...). Empty runs none, for a
+      workflow that only comments.
+    default: check
+  working-directory:
+    description: The repository root, where .trail.toml is
+    default: .
+  fetch-tags:
+    description: Fetch tags (and enough history) first; snapshots name their tag's commit
+    default: "true"
+  comment-missing:
+    description: >-
+      On a merged pull request (a `pull_request` `closed` event), comment when it has no trail
+      event. Needs `pull-requests: write`.
+    default: "false"
+  github-token:
+    description: The token that posts the comment
+    default: ${{ github.token }}
+  python:
+    description: The Python 3.9+ to run the checker with
+    default: python3
+
+outputs:
+  missing:
+    description: With comment-missing, "true" when the merged pull request has no event
+    value: ${{ steps.missing.outputs.missing }}
+
+runs:
+  using: composite
+  steps:
+    - name: Fetch tags and history
+      if: inputs.fetch-tags == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        # snapshots name their tag's commit, and Missing reads merge commits
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          git fetch -q --unshallow --tags origin || git fetch -q --tags origin || true
+        else
+          git fetch -q --tags origin || true
+        fi
+
+    - name: trail ${{ inputs.command }}
+      if: inputs.command != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/src
+        TRAIL_PY: ${{ inputs.python }}
+        TRAIL_COMMAND: ${{ inputs.command }}
+      run: |
+        "$TRAIL_PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else "claude-trail needs Python 3.9 or later")'
+        # word splitting on purpose: the input is the command and its arguments
+        # shellcheck disable=SC2086
+        "$TRAIL_PY" -m claude_trail --root . $TRAIL_COMMAND
+
+    - name: Comment when the merged pull request has no event
+      id: missing
+      if: >-
+        inputs.comment-missing == 'true' && github.event_name == 'pull_request'
+        && github.event.action == 'closed' && github.event.pull_request.merged
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      env:
+        PYTHONPATH: ${{ github.action_path }}/src
+        TRAIL_PY: ${{ inputs.python }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        PR: ${{ github.event.pull_request.number }}
+        BASE: ${{ github.event.pull_request.base.ref }}
+        MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        REPO: ${{ github.repository }}
+      run: |
+        git fetch -q origin "+refs/heads/$BASE:refs/remotes/origin/$BASE" || true
+        set +e
+        "$TRAIL_PY" -m claude_trail --root . missing --ref "$MERGE_SHA" --pr "$PR"
+        rc=$?
+        set -e
+        if [ "$rc" -eq 0 ]; then echo "missing=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+        if [ "$rc" -ne 1 ]; then echo "::warning::trail missing failed ($rc); no comment"; exit 0; fi
+        echo "missing=true" >> "$GITHUB_OUTPUT"
+        marker='<!-- claude-trail:missing -->'
+        if gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' | grep -qF "$marker"; then
+          echo "already commented"; exit 0
+        fi
+        events=$("$TRAIL_PY" -c 'from claude_trail import config; c = config.load(); print(c.events, c.pr_digits)')
+        dir=${events% *}; digits=${events##* }
+        name=$(printf "%0${digits}d" "$PR")
+        body="$marker
+        This pull request merged with no Claude trail event. Write \`$dir/$name-<slug>.md\` (what happened, what was learned) in a trail-only pull request: \`/trail:event $PR\` in a Claude Code session with the trail plugin."
+        gh pr comment "$PR" --repo "$REPO" --body "$(printf '%s\n' "$body" | sed 's/^        //')"

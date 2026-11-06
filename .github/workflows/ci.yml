@@ -1,0 +1,94 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: astral-sh/setup-uv@v8.1.0
+      - name: ruff
+        run: |
+          uvx ruff@0.14.3 check .
+          uvx ruff@0.14.3 format --check .
+      - name: mypy (strict, src)
+        run: uv run --python 3.12 --with mypy==1.18.2 mypy
+      - name: The JSON manifests parse
+        run: for f in .claude-plugin/*.json hooks/hooks.json; do python3 -m json.tool "$f" > /dev/null; done
+      - name: shellcheck
+        run: shellcheck bin/trail hooks/run-hook.sh
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04]
+        python: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: macos-15
+            python: "3.12"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-python@v6.2.0
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -q pytest==8.3.5
+      - run: python -m pytest
+
+  plugin:
+    # the official validator for the manifest, the marketplace and the hooks file
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate .
+
+  action:
+    # the Action itself, on a scratch repository with a trail
+    runs-on: ubuntu-22.04  # its python3 is 3.10: the fallback TOML reader
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - name: A scratch repository with a trail
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/sample" && cd "$RUNNER_TEMP/sample"
+          git init -q -b main && git config user.email ci@example.invalid && git config user.name ci
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m claude_trail init
+          printf -- '---\nschema: 1\nkind: pr\npr: 1\ntitle: First\ndate: 2026-11-06\nsession: ci\n---\n\n## What happened\nIt began.\n' > docs/trail/events/0001-first.md
+          git add -A && git commit -qm root
+      - name: The Action passes on a good trail
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/sample
+          fetch-tags: "false"
+      - name: A bad event
+        run: printf -- '---\nschema: 1\n---\n\n## What happened\nx\n' > "$RUNNER_TEMP/sample/docs/trail/events/0002-bad.md"
+      - name: The Action fails on a bad trail
+        id: bad
+        continue-on-error: true
+        uses: ./
+        with:
+          working-directory: ${{ runner.temp }}/sample
+          fetch-tags: "false"
+      - name: It did fail
+        if: steps.bad.outcome != 'failure'
+        run: exit 1

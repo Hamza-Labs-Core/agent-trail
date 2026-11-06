@@ -1,0 +1,16 @@
+{
+  "name": "claude-trail",
+  "description": "The Claude trail plugin: per-PR events, per-tag snapshots and a reminder hook",
+  "owner": {
+    "name": "Hamza Labs",
+    "url": "https://github.com/Hamza-Labs-Core"
+  },
+  "plugins": [
+    {
+      "name": "trail",
+      "source": "./",
+      "description": "Per-PR trail events, per-tag snapshots, the reminder hook and the `trail` checker",
+      "category": "productivity"
+    }
+  ]
+}

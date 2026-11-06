@@ -1,0 +1,14 @@
+{
+  "name": "trail",
+  "displayName": "Claude trail",
+  "version": "0.1.0",
+  "description": "Keep what Claude sessions learn in a repository: one event per merged pull request, a snapshot per tag, a hook that reminds a session to write its events, and a `trail` checker.",
+  "author": {
+    "name": "Hamza Labs",
+    "url": "https://github.com/Hamza-Labs-Core"
+  },
+  "homepage": "https://github.com/Hamza-Labs-Core/claude-trail",
+  "repository": "https://github.com/Hamza-Labs-Core/claude-trail",
+  "license": "MIT",
+  "keywords": ["trail", "memory", "lessons", "pull-requests", "changelog"]
+}
