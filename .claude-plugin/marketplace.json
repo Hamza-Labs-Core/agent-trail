@@ -1,6 +1,6 @@
 {
-  "name": "claude-trail",
-  "description": "The Claude trail plugin: per-PR events, per-tag snapshots and a reminder hook",
+  "name": "agent-trail",
+  "description": "The agent trail plugin: per-PR events, per-tag snapshots and a reminder hook",
   "owner": {
     "name": "Hamza Labs",
     "url": "https://github.com/Hamza-Labs-Core"

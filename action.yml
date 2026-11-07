@@ -1,5 +1,5 @@
-name: Claude trail
-description: Check a repository's Claude trail (events and snapshots), and optionally comment on a merged pull request that has no event
+name: Agent trail
+description: Check a repository's agent trail (events and snapshots), and optionally comment on a merged pull request that has no event
 author: Hamza Labs
 branding:
   icon: book-open
@@ -58,10 +58,10 @@ runs:
         TRAIL_PY: ${{ inputs.python }}
         TRAIL_COMMAND: ${{ inputs.command }}
       run: |
-        "$TRAIL_PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else "claude-trail needs Python 3.9 or later")'
+        "$TRAIL_PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else "agent-trail needs Python 3.9 or later")'
         # word splitting on purpose: the input is the command and its arguments
         # shellcheck disable=SC2086
-        "$TRAIL_PY" -m claude_trail --root . $TRAIL_COMMAND
+        "$TRAIL_PY" -m agent_trail --root . $TRAIL_COMMAND
 
     - name: Comment when the merged pull request has no event
       id: missing
@@ -81,19 +81,19 @@ runs:
       run: |
         git fetch -q origin "+refs/heads/$BASE:refs/remotes/origin/$BASE" || true
         set +e
-        "$TRAIL_PY" -m claude_trail --root . missing --ref "$MERGE_SHA" --pr "$PR"
+        "$TRAIL_PY" -m agent_trail --root . missing --ref "$MERGE_SHA" --pr "$PR"
         rc=$?
         set -e
         if [ "$rc" -eq 0 ]; then echo "missing=false" >> "$GITHUB_OUTPUT"; exit 0; fi
         if [ "$rc" -ne 1 ]; then echo "::warning::trail missing failed ($rc); no comment"; exit 0; fi
         echo "missing=true" >> "$GITHUB_OUTPUT"
-        marker='<!-- claude-trail:missing -->'
+        marker='<!-- agent-trail:missing -->'
         if gh api "repos/$REPO/issues/$PR/comments" --paginate --jq '.[].body' | grep -qF "$marker"; then
           echo "already commented"; exit 0
         fi
-        events=$("$TRAIL_PY" -c 'from claude_trail import config; c = config.load(); print(c.events, c.pr_digits)')
+        events=$("$TRAIL_PY" -c 'from agent_trail import config; c = config.load(); print(c.events, c.pr_digits)')
         dir=${events% *}; digits=${events##* }
         name=$(printf "%0${digits}d" "$PR")
         body="$marker
-        This pull request merged with no Claude trail event. Write \`$dir/$name-<slug>.md\` (what happened, what was learned) in a trail-only pull request: \`/trail:event $PR\` in a Claude Code session with the trail plugin."
+        This pull request merged with no trail event. Write \`$dir/$name-<slug>.md\` (what happened, what was learned) in a trail-only pull request: the agent that did the work writes it (\`/trail:event $PR\` in Claude Code with the trail plugin)."
         gh pr comment "$PR" --repo "$REPO" --body "$(printf '%s\n' "$body" | sed 's/^        //')"

@@ -3,7 +3,7 @@ description: Build the trail snapshot for each v* tag that has none, in one trai
 argument-hint: "[vX.Y.Z]"
 ---
 
-Build Claude trail snapshots. Follow section 4 of the `trail` skill.
+Build Agent trail snapshots. Follow section 4 of the `trail` skill.
 
 1. `git fetch -q --tags origin` and update the main branch. Work on a new branch from it.
 2. The tags to build: $ARGUMENTS if given. Otherwise run `trail unsnapshotted`, which lists

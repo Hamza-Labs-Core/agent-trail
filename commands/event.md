@@ -3,7 +3,7 @@ description: Write the trail event for the current branch's pull request (or the
 argument-hint: "[PR number]"
 ---
 
-Write the Claude trail event for pull request $ARGUMENTS. If no number was given, use the open
+Write the agent trail event for pull request $ARGUMENTS. If no number was given, use the open
 pull request for the current branch (`gh pr view --json number,title,url`). If the branch has
 no pull request yet, open it first: the event is named for its number.
 
@@ -14,7 +14,7 @@ no pull request yet, open it first: the event is named for its number.
    and shas, and never guess one.
 3. Write `<events>/<N zero-padded>-<slug>.md` in the format the `trail` skill shows:
    `schema: 1`, `kind: pr`, `pr: N`, `title`, `date`, `session` (this session's id), plus
-   `prs:` or `issue:` when they apply. Write `## What happened` (required), then only the
+   `agent: claude-code`, plus `prs:` or `issue:` when they apply. Write `## What happened` (required), then only the
    sections the work really produced: `## What we learned`, `## Keep doing`,
    `## Stop doing`, `## Open` (with issue numbers). An empty section is left out, never padded.
 4. If the pull request already merged, the event goes in a new trail-only pull request. If an

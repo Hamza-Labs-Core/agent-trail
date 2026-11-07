@@ -1,9 +1,9 @@
 ---
 name: trail
-description: The Claude trail, a repository's record of what Claude sessions learned. Use it at the start of every session in a repository with a .trail.toml (read the current snapshot), whenever a pull request is about to merge or has merged (write its event), when the trail hook says a merged PR has no event, before a session ends or compacts, and after a v* tag (build the snapshot). It covers the events and snapshots folders and the `trail` command.
+description: The agent trail, a repository's record of what coding-agent sessions learned. Use it at the start of every session in a repository with a .trail.toml (read the current snapshot), whenever a pull request is about to merge or has merged (write its event), when the trail hook says a merged PR has no event, before a session ends or compacts, and after a v* tag (build the snapshot). It covers the events and snapshots folders and the `trail` command.
 ---
 
-# The Claude trail
+# The agent trail
 
 The trail keeps what sessions learned, so the next session starts from it. It isn't a
 changelog and it isn't a list of pull requests (git already has that). It holds what only the
@@ -21,7 +21,7 @@ when it changes them:
 | event names | `NNNN-slug.md` (PR, zero-padded to `events.pr_digits`), `iNNNN-slug.md` (issue), `dYYYYMMDD-slug.md` (day) |
 
 The plugin puts `trail` on the PATH. Without the plugin, run
-`uvx --from git+https://github.com/Hamza-Labs-Core/claude-trail trail …`.
+`uvx --from git+https://github.com/Hamza-Labs-Core/agent-trail trail …`.
 
 ## 1. At session start: read
 
@@ -61,6 +61,7 @@ pr: 634
 title: YouTube sources from linked videos
 date: 2026-11-04        # the day the work happened (or merged)
 session: <your session id>   # the name of your transcript file
+agent: claude-code      # optional: the agent that wrote it
 prs: [628]              # optional: other pull requests this event is also about
 ---
 
@@ -76,10 +77,11 @@ second event for the same PR, `NNNN-after-merge.md`, in a trail-only pull reques
 trail-only pull request changes only the `trail_only` paths. Work with no PR is named for its
 issue (`iNNNN-slug.md`) or its day (`dYYYYMMDD-slug.md`), with the right `kind`.
 
-Check before you push:
+Check before you push, and before you finish:
 
 ```bash
-trail check
+trail check    # every event and snapshot is valid
+trail remind   # merged PRs with no event (any branch), tags with no snapshot
 ```
 
 Rules: use real PR, issue and sha numbers only (from `gh` and `git`); never write secrets

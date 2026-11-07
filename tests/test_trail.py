@@ -11,9 +11,9 @@ from pathlib import Path
 
 import pytest
 
-from claude_trail import core as trail
-from claude_trail import hook
-from claude_trail.config import Config
+from agent_trail import core as trail
+from agent_trail import hook, remind
+from agent_trail.config import Config
 from conftest import GOOD, g, merge_pr, write
 
 # ---- events ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ def hook_repo(repo: Path) -> None:
 
 @pytest.fixture
 def state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
-    monkeypatch.setattr(hook, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(remind, "STATE_DIR", tmp_path / "state")
     return tmp_path / "state"
 
 
@@ -306,9 +306,9 @@ def test_the_hook_reads_prs_lists_from_events_only_in_git_history(repo: Path, tm
     g(repo, "add", "-A")
     g(repo, "commit", "-qm", "event")
     g(repo, "checkout", "-q", "main")  # the event is on a branch, not checked out
-    from claude_trail import config
+    from agent_trail import config
 
-    assert 700 in hook.covered(repo, config.load(repo))
+    assert 700 in remind.covered(repo, config.load(repo))
     t = transcript(tmp_path / "s.jsonl", ["gh pr merge 700 --merge"])
     assert hook.handle({"hook_event_name": "Stop", "transcript_path": str(t)}, repo) is None
 
@@ -325,8 +325,8 @@ def test_a_hung_fetch_still_stamps_so_the_next_stop_skips_it(
             raise subprocess.TimeoutExpired(cmd, 15)
         return real(cmd, **kw)  # type: ignore[call-overload,no-any-return]
 
-    monkeypatch.setattr(hook.subprocess, "run", run)
-    hook.fetch_main(repo, cfg)  # does not raise
-    hook.fetch_main(repo, cfg)  # stamped: no second fetch
+    monkeypatch.setattr(remind.subprocess, "run", run)
+    remind.fetch_main(repo, cfg)  # does not raise
+    remind.fetch_main(repo, cfg)  # stamped: no second fetch
     assert len(calls) == 1
     assert list(state.glob("last-fetch-*"))

@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from claude_trail import config
+from agent_trail import config
 
 # the settings the trail was built with (Maktaba's): the ported tests assume them
 MAKTABA_TOML = """\

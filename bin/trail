@@ -2,4 +2,4 @@
 # The plugin's `trail` command: on the Bash tool's PATH while the plugin is enabled. It runs
 # the checker from the plugin's own copy, with the python3 the machine has (3.9 or later).
 here=$(cd "$(dirname "$0")/.." && pwd)
-PYTHONPATH="$here/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m claude_trail "$@"
+PYTHONPATH="$here/src${PYTHONPATH:+:$PYTHONPATH}" exec python3 -m agent_trail "$@"

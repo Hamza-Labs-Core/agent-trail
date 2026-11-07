@@ -195,7 +195,7 @@ def load(root: Path | None = None) -> Config:
 
 
 TEMPLATE = """\
-# The Claude trail's settings (https://github.com/Hamza-Labs-Core/claude-trail).
+# The agent trail's settings (https://github.com/Hamza-Labs-Core/agent-trail).
 # Every key is optional: the values below are the defaults.
 
 [paths]

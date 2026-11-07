@@ -3,16 +3,16 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 [project]
-name = "claude-trail"
-version = "0.1.0"
-description = "Keep what Claude sessions learn in a repository: per-PR events, per-tag snapshots, and their checker"
+name = "agent-trail"
+version = "0.2.0"
+description = "Keep what coding-agent sessions learn in a repository: per-PR events, per-tag snapshots, and their checker"
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 authors = [{ name = "Hamza Labs" }]
 requires-python = ">=3.9"
 dependencies = []  # none at run time, by design: the hook runs on the machine's python3
-keywords = ["claude", "claude-code", "trail", "lessons", "pull-requests"]
+keywords = ["agents", "claude-code", "codex", "cursor", "trail", "lessons", "pull-requests"]
 classifiers = [
   "Development Status :: 3 - Alpha",
   "Environment :: Console",
@@ -22,21 +22,21 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/Hamza-Labs-Core/claude-trail"
-Issues = "https://github.com/Hamza-Labs-Core/claude-trail/issues"
+Homepage = "https://github.com/Hamza-Labs-Core/agent-trail"
+Issues = "https://github.com/Hamza-Labs-Core/agent-trail/issues"
 
 [project.scripts]
-trail = "claude_trail.cli:main"
-claude-trail = "claude_trail.cli:main"  # so `uvx claude-trail check` works
+trail = "agent_trail.cli:main"
+agent-trail = "agent_trail.cli:main"  # so `uvx agent-trail check` works
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.8", "mypy>=1.13"]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/claude_trail"]
+packages = ["src/agent_trail"]
 
 [tool.hatch.build.targets.sdist]
-include = ["src/claude_trail", "tests", "README.md", "LICENSE", "pyproject.toml"]
+include = ["src/agent_trail", "tests", "README.md", "LICENSE", "pyproject.toml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -56,7 +56,7 @@ ignore = ["RUF001", "RUF002", "RUF003", "RUF005", "SIM105", "SIM108", "UP007", "
 "tests/*" = ["E501"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["claude_trail", "conftest"]
+known-first-party = ["agent_trail", "conftest"]
 
 [tool.mypy]
 python_version = "3.12"  # the stdlib stubs with tomllib; the code itself runs on 3.9+

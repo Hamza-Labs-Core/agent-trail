@@ -76,7 +76,7 @@ jobs:
           set -e
           mkdir -p "$RUNNER_TEMP/sample" && cd "$RUNNER_TEMP/sample"
           git init -q -b main && git config user.email ci@example.invalid && git config user.name ci
-          PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m claude_trail init
+          PYTHONPATH="$GITHUB_WORKSPACE/src" python3 -m agent_trail init
           printf -- '---\nschema: 1\nkind: pr\npr: 1\ntitle: First\ndate: 2026-11-06\nsession: ci\n---\n\n## What happened\nIt began.\n' > docs/trail/events/0001-first.md
           git add -A && git commit -qm root
       - name: The Action passes on a good trail

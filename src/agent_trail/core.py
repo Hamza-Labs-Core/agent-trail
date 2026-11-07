@@ -1,4 +1,4 @@
-"""The Claude trail: events, snapshots and the missing-events list.
+"""The agent trail: events, snapshots and the missing-events list.
 
     <events>/       one file per piece of work, written by the session that did it
     <snapshots>/    vX.Y.Z.md, one per tag, built by a session from the last snapshot plus the
@@ -21,7 +21,7 @@ from .config import Config
 KINDS = {"pr", "incident", "decision", "correction", "release", "migration"}
 SECTIONS = ["What happened", "What we learned", "Keep doing", "Stop doing", "Open"]
 REQUIRED_KEYS = {"schema", "kind", "title", "date", "session"}
-OPTIONAL_KEYS = {"pr", "issue", "prs", "corrects", "source"}
+OPTIONAL_KEYS = {"pr", "issue", "prs", "corrects", "source", "agent"}
 SNAPSHOT_KEYS = {"schema", "tag", "up_to_commit", "built_from"}
 SNAPSHOT_SECTIONS = ["Keep doing", "Stop doing", "What we learned", "Open", "Missing events", "Index"]
 CITED_SECTIONS = {"Keep doing", "Stop doing", "What we learned", "Open"}
@@ -210,6 +210,9 @@ def event_from(path: str, text: str, cfg: Config = DEFAULT) -> tuple[Event | Non
         errs.append(f"{path}: title is empty")
     if not str(meta.get("session", "")).strip():
         errs.append(f"{path}: session is empty (the session id, or `unknown` for a migrated entry)")
+    if "agent" in meta and (not isinstance(meta["agent"], str) or not meta["agent"].strip()):
+        # free text: the agent that wrote it (claude-code, codex, cursor, ...)
+        errs.append(f"{path}: agent names the agent that wrote the event (claude-code, codex, cursor, ...)")
     ev = Event(
         path=path,
         stem=name[:-3],

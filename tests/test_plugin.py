@@ -12,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from claude_trail import __version__, hook
+from agent_trail import __version__, hook, remind
 from conftest import g, merge_pr
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,7 +29,7 @@ def test_the_manifest_and_the_marketplace_agree() -> None:
     # claude-, anthropic- and similar prefixes are reserved for Anthropic's own plugins
     assert not re.match(r"(claude|anthropic|cc-plugin)-", plugin["name"])
     assert plugin["version"] == __version__
-    assert market["name"] == "claude-trail" and market["owner"]["name"]
+    assert market["name"] == "agent-trail" and market["owner"]["name"]
     [entry] = market["plugins"]
     assert entry["name"] == plugin["name"] and entry["source"] == "./"
     assert "version" not in entry  # plugin.json's version is the one
@@ -86,7 +86,7 @@ def test_the_hook_script_exits_0_on_garbage(tmp_path: Path) -> None:
 
 
 def test_the_hook_is_quiet_in_a_repository_with_no_trail(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(hook, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(remind, "STATE_DIR", tmp_path / "state")
     plain = tmp_path / "plain"
     plain.mkdir()
     g(plain, "init", "-q", "-b", "main")
@@ -97,7 +97,7 @@ def test_the_hook_is_quiet_in_a_repository_with_no_trail(tmp_path: Path, monkeyp
 
 
 def test_the_hook_finds_the_trail_from_a_subfolder(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(hook, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(remind, "STATE_DIR", tmp_path / "state")
     merge_pr(repo, 700, {"a.txt": "a"})
     g(repo, "remote", "add", "origin", str(repo))
     g(repo, "fetch", "-q", "origin")
@@ -111,23 +111,23 @@ def test_the_hook_finds_the_trail_from_a_subfolder(repo: Path, tmp_path: Path, m
 def test_the_startup_reminder_lists_only_this_repositorys_prs(
     repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(hook, "STATE_DIR", tmp_path / "state")
+    monkeypatch.setattr(remind, "STATE_DIR", tmp_path / "state")
     (tmp_path / "state").mkdir()
     other = {"repo": "/somewhere/else/.git", "session": "x", "prs": [9001]}
     legacy = {"session": "y", "prs": [9002]}  # a record from before records named their repository
-    mine = {"repo": hook.repo_key(repo), "session": "z", "prs": [9003]}
-    hook.log_path().write_text("\n".join(json.dumps(r) for r in (other, legacy, mine)) + "\n", encoding="utf-8")
+    mine = {"repo": remind.repo_key(repo), "session": "z", "prs": [9003]}
+    remind.log_path().write_text("\n".join(json.dumps(r) for r in (other, legacy, mine)) + "\n", encoding="utf-8")
     out = hook.handle({"hook_event_name": "SessionStart", "source": "startup"}, repo)
     text = str(out)
     assert "#9003" in text and "#9002" in text and "#9001" not in text
 
 
 def test_the_state_dir_follows_the_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.delenv("CLAUDE_TRAIL_HOOK_DIR", raising=False)
+    monkeypatch.delenv("AGENT_TRAIL_STATE_DIR", raising=False)
     monkeypatch.setenv("CLAUDE_PLUGIN_DATA", str(tmp_path / "data"))
-    assert hook.state_dir() == tmp_path / "data"
-    monkeypatch.setenv("CLAUDE_TRAIL_HOOK_DIR", str(tmp_path / "mine"))
-    assert hook.state_dir() == tmp_path / "mine"
+    assert remind.state_dir() == tmp_path / "data"
+    monkeypatch.setenv("AGENT_TRAIL_STATE_DIR", str(tmp_path / "mine"))
+    assert remind.state_dir() == tmp_path / "mine"
 
 
 def test_the_workflows_and_the_action_are_yaml() -> None:

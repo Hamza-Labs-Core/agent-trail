@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_trail import _toml, config, core
-from claude_trail.config import Config, ConfigError
+from agent_trail import _toml, config, core
+from agent_trail.config import Config, ConfigError
 from conftest import GOOD, g, merge_pr, write
 
 

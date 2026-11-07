@@ -1,7 +1,7 @@
 name: Release
 
 # A v* tag (vX.Y.Z): build the package, attach it to a GitHub release, move the major tag
-# (v0) to it so `uses: Hamza-Labs-Core/claude-trail@v0` follows, and publish to PyPI once the
+# (v0) to it so `uses: Hamza-Labs-Core/agent-trail@v0` follows, and publish to PyPI once the
 # repository variable PYPI_PUBLISH is "true" (after the trusted publisher is set up: README).
 
 on:
@@ -20,7 +20,7 @@ jobs:
       - uses: astral-sh/setup-uv@v8.1.0
       - name: The tag is the package's version
         run: |
-          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/claude_trail/__init__.py)
+          v=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/agent_trail/__init__.py)
           [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::tag $GITHUB_REF_NAME, package $v"; exit 1; }
           grep -q "\"version\": \"$v\"" .claude-plugin/plugin.json || { echo "::error::plugin.json is not $v"; exit 1; }
       - run: uv build
@@ -61,7 +61,7 @@ jobs:
     timeout-minutes: 10
     environment:
       name: pypi
-      url: https://pypi.org/p/claude-trail
+      url: https://pypi.org/p/agent-trail
     permissions:
       id-token: write  # trusted publishing: no token is stored anywhere
     steps:

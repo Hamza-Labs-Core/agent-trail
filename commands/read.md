@@ -3,7 +3,7 @@ description: Load the trail, the current snapshot plus the events merged since i
 argument-hint: "[topic to focus on]"
 ---
 
-Load the Claude trail for this repository. Read `.trail.toml` for the paths (defaults:
+Load the agent trail for this repository. Read `.trail.toml` for the paths (defaults:
 `docs/trail/current.md`, `docs/trail/events`).
 
 1. `git fetch -q origin main` (or the configured remote and main branch).

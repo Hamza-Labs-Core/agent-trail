@@ -1,4 +1,4 @@
-"""The `trail` command: exit codes and output, run in-process and as `python -m claude_trail`."""
+"""The `trail` command: exit codes and output, run in-process and as `python -m agent_trail`."""
 
 from __future__ import annotations
 
@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from claude_trail import __version__, config
-from claude_trail.cli import main
+from agent_trail import __version__, config
+from agent_trail.cli import main
 from conftest import GOOD, g, merge_pr, write
 
 SRC = Path(__file__).resolve().parents[1] / "src"
@@ -20,7 +20,7 @@ ROOT = SRC.parent
 
 def run(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
     env = {**os.environ, "PYTHONPATH": str(SRC)}
-    return subprocess.run([sys.executable, "-m", "claude_trail", *args], cwd=cwd, env=env, capture_output=True, text=True)
+    return subprocess.run([sys.executable, "-m", "agent_trail", *args], cwd=cwd, env=env, capture_output=True, text=True)
 
 
 def test_version(capsys: pytest.CaptureFixture[str]) -> None:
@@ -106,7 +106,7 @@ def test_the_module_runs_from_a_subfolder(repo: Path) -> None:
 def test_the_hook_command_reads_stdin_and_exits_0(repo: Path) -> None:
     env = {**os.environ, "PYTHONPATH": str(SRC), "CLAUDE_PROJECT_DIR": str(repo)}
     r = subprocess.run(
-        [sys.executable, "-m", "claude_trail", "hook"],
+        [sys.executable, "-m", "agent_trail", "hook"],
         input=json.dumps({"hook_event_name": "Stop", "transcript_path": "/nonexistent"}),
         env=env,
         capture_output=True,
