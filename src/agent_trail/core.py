@@ -28,6 +28,7 @@ CITED_SECTIONS = {"Keep doing", "Stop doing", "What we learned", "Open"}
 
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
+FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$")
 MERGE_RE = re.compile(r"^Merge pull request #(\d+) ")
 
 # Patterns that must never appear in trail text (it is read by every session, and leaves the
@@ -277,8 +278,116 @@ def git(cfg: Config, *args: str, timeout: float | None = None) -> str:
     return r.stdout
 
 
-def files_at(ref: str | None, prefix: str, cfg: Config = DEFAULT) -> dict[str, str]:
-    """{path: text} under prefix, at a commit, or in the working tree when ref is None."""
+# What git stores never changes, so a run reads each object once and caches what it built
+# from it, keyed by the repository (one process may read several): most event files are the
+# same blob at every snapshot's commit, and every snapshot's history repeats the one before.
+_BLOBS: dict[tuple[str, str], str] = {}  # blob sha: its text
+_CHANGED: dict[tuple[str, str], list[str]] = {}  # commit sha: the files it changed from its first parent
+_COMMITS: dict[tuple[str, str], tuple[str, str, str, str]] = {}  # sha: %P, %cs, %s, %b
+# An event file's check depends only on its path, its text and the settings.
+_EVENTS: dict[tuple[Config, str, str], tuple[Event | None, list[str]]] = {}
+
+
+def _text(data: bytes) -> str:
+    """A file's bytes as `git show` read in text mode gave them: UTF-8, universal newlines."""
+    return data.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+
+
+class ObjectReader:
+    """One `git cat-file --batch` for a run: ask for any object by name (a sha, `<rev>:<path>`,
+    `<tag>^{commit}`), one at a time. close() it, or use it in a `with`."""
+
+    def __init__(self, cfg: Config = DEFAULT) -> None:
+        self.root = cfg.root
+        self.proc: subprocess.Popen[bytes] | None = None
+
+    def __enter__(self) -> ObjectReader:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    def close(self) -> None:
+        if self.proc is not None:
+            proc, self.proc = self.proc, None
+            for f in (proc.stdin, proc.stdout):
+                if f is not None:
+                    f.close()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+
+    def get(self, name: str) -> tuple[str, str, bytes] | None:
+        """(sha, type, content), or None for a name git has no object for (or an ambiguous one)."""
+        if not name or "\n" in name or "\r" in name:
+            raise TrailError(f"git cat-file: no object name can hold a line break: {name!r}")
+        if self.proc is None:
+            try:
+                self.proc = subprocess.Popen(
+                    ["git", "cat-file", "--batch"],
+                    cwd=self.root,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.DEVNULL,
+                )
+            except OSError as e:
+                raise TrailError(f"git cat-file --batch: {e}") from e
+        proc = self.proc
+        assert proc.stdin is not None and proc.stdout is not None
+        try:
+            proc.stdin.write(name.encode("utf-8") + b"\n")
+            proc.stdin.flush()
+            header = proc.stdout.readline()
+        except OSError as e:
+            self.close()
+            raise TrailError(f"git cat-file --batch: {e}") from e
+        if not header.endswith(b"\n"):
+            self.close()
+            raise TrailError(f"git cat-file --batch: it stopped at {name!r} (is this a git repository?)")
+        parts = header[:-1].decode("utf-8", "replace").rsplit(" ", 2)
+        if len(parts) == 3 and parts[2].isdigit() and FULL_SHA_RE.match(parts[0]):
+            size = int(parts[2])
+            data = proc.stdout.read(size + 1)  # the content, then a newline
+            if len(data) != size + 1:
+                self.close()
+                raise TrailError(f"git cat-file --batch: {name!r} was cut short")
+            return parts[0], parts[1], data[:size]
+        if header.endswith((b" missing\n", b" ambiguous\n")):
+            return None
+        self.close()
+        raise TrailError(f"git cat-file --batch: unexpected output for {name!r}: {header[:80]!r}")
+
+
+def read_objects(objects: list[str], cfg: Config = DEFAULT) -> dict[str, bytes | None]:
+    """Each object's content, from one `git cat-file --batch`: an object is a sha or
+    `<rev>:<path>` (a path may hold spaces or any unicode). None for one git does not have."""
+    with ObjectReader(cfg) as r:
+        out: dict[str, bytes | None] = {}
+        for o in objects:
+            got = r.get(o)
+            out[o] = None if got is None else got[2]
+        return out
+
+
+def _tree_entries(data: bytes) -> list[tuple[str, str, str]]:
+    """A raw tree object's (mode, name, sha) entries, in the tree's order."""
+    out = []
+    i = 0
+    while i < len(data):
+        sp = data.index(b" ", i)
+        nul = data.index(b"\0", sp)
+        out.append((data[i:sp].decode(), data[sp + 1 : nul].decode("utf-8", "replace"), data[nul + 1 : nul + 21].hex()))
+        i = nul + 21
+    return out
+
+
+def files_at(ref: str | None, prefix: str, cfg: Config = DEFAULT, reader: ObjectReader | None = None) -> dict[str, str]:
+    """{path: text} under prefix, at a commit, or in the working tree when ref is None.
+
+    At a commit, the trees and blobs come from one `git cat-file --batch` (the reader given, or
+    one of its own), and a blob this run has read before is not read again."""
     out: dict[str, str] = {}
     if ref is None:
         base = cfg.root / prefix
@@ -286,39 +395,147 @@ def files_at(ref: str | None, prefix: str, cfg: Config = DEFAULT) -> dict[str, s
             for p in sorted(base.rglob("*.md")):
                 out[p.relative_to(cfg.root).as_posix()] = p.read_text(encoding="utf-8")
         return out
-    try:
-        names = git(cfg, "ls-tree", "-r", "--name-only", ref, "--", prefix).split("\n")
-    except TrailError:
+    if reader is None:
+        with ObjectReader(cfg) as own:
+            return files_at(ref, prefix, cfg, own)
+    prefix = prefix.strip("/")
+    top = reader.get(f"{ref}:{prefix}")
+    if top is None:  # no such commit, or nothing at prefix (git ls-tree listed nothing)
         return out
-    for n in names:
-        if n.endswith(".md"):
-            out[n] = git(cfg, "show", f"{ref}:{n}")
+    blobs: list[tuple[str, str]] = []
+
+    def walk(path: str, sha: str, kind: str, data: bytes | None) -> None:
+        if kind == "tree":
+            if data is None:
+                got = reader.get(sha)
+                if got is None:
+                    raise TrailError(f"git cat-file: {ref} holds tree {sha}, which git does not have")
+                data = got[2]
+            for mode, name, child in _tree_entries(data):
+                if mode == "160000":
+                    continue  # a submodule: no file here
+                walk(f"{path}/{name}", child, "tree" if mode == "40000" else "blob", None)
+        elif kind == "blob" and path.endswith(".md"):
+            blobs.append((path, sha))
+
+    walk(prefix, top[0], top[1], top[2])
+    root = str(cfg.root)
+    for path, sha in blobs:
+        if (root, sha) not in _BLOBS:
+            got = reader.get(sha)
+            if got is None:
+                raise TrailError(f"git cat-file: {ref} holds blob {sha}, which git does not have")
+            _BLOBS[(root, sha)] = _text(got[2])
+        out[path] = _BLOBS[(root, sha)]
     return out
+
+
+def _load_history(refs: list[str], cfg: Config) -> None:
+    """Cache every commit on the first-parent lines of refs, from one `git log`."""
+    if not refs:
+        return
+    try:
+        log = git(cfg, "log", "-z", "--first-parent", "--format=%H%x09%P%x09%cs%x09%s%x09%b", *refs, "--")
+    except TrailError:
+        return  # a ref git doesn't know: each snapshot asks git itself, as before
+    root = str(cfg.root)
+    for rec in log.split("\0"):
+        rec = rec.strip("\n")
+        if not rec:
+            continue
+        sha, parents, rest = (rec.split("\t", 2) + ["", ""])[:3]
+        day, subject, body = (rest.split("\t", 2) + ["", "", ""])[:3]
+        _COMMITS[(root, sha)] = (parents, day, subject, body)
 
 
 def merged_prs(ref: str, cfg: Config = DEFAULT) -> list[tuple[int, str, str, str]]:
     """(number, merge sha, date, title) for each pull request merged into ref's first-parent line."""
-    log = git(cfg, "log", "--first-parent", "--merges", "--format=%H%x09%cs%x09%s%x09%b%x1e", ref)
+    return [(n, sha, day, title) for n, sha, _parent, day, title in _merges(ref, cfg)]
+
+
+def _merges(ref: str, cfg: Config) -> list[tuple[int, str, str, str, str]]:
+    """merged_prs, with each merge's first parent after its sha."""
+    root = str(cfg.root)
+    if FULL_SHA_RE.match(ref) and (root, ref) in _COMMITS:
+        cached: list[tuple[int, str, str, str, str]] = []
+        sha = ref
+        while sha:
+            c = _COMMITS.get((root, sha))
+            if c is None:
+                break  # history not cached: ask git
+            parents, day, subject, body = c
+            parent_list = parents.split(" ") if parents else []
+            m = MERGE_RE.match(subject)
+            if len(parent_list) > 1 and m:
+                title = body.strip().splitlines()[0] if body.strip() else subject
+                cached.append((int(m.group(1)), sha, parent_list[0], day, title))
+            sha = parent_list[0] if parent_list else ""
+        else:
+            return cached
+    log = git(cfg, "log", "--first-parent", "--merges", "--format=%H%x09%P%x09%cs%x09%s%x09%b%x1e", ref)
     out = []
     for rec in log.split("\x1e"):
         rec = rec.strip("\n")
         if not rec:
             continue
-        sha, day, subject, body = (rec.split("\t", 3) + ["", "", "", ""])[:4]
+        sha, parents, day, subject, body = (rec.split("\t", 4) + ["", "", "", "", ""])[:5]
         m = MERGE_RE.match(subject)
         if m:
             title = body.strip().splitlines()[0] if body.strip() else subject
-            out.append((int(m.group(1)), sha, day, title))
+            out.append((int(m.group(1)), sha, parents.split(" ")[0], day, title))
     return out
+
+
+def _prefetch_changed(pairs: list[tuple[str, str]], cfg: Config) -> None:
+    """Fill the changed-files cache for (commit, first parent) pairs: one `git diff-tree`."""
+    root = str(cfg.root)
+    todo = [(c, p) for c, p in dict(pairs).items() if (root, c) not in _CHANGED and FULL_SHA_RE.match(c) and FULL_SHA_RE.match(p)]
+    if not todo:
+        return
+    try:
+        r = subprocess.run(
+            ["git", "diff-tree", "--stdin", "--always", "-r", "--name-only", "--no-renames", "-z"],
+            cwd=cfg.root,
+            input="".join(f"{c} {p}\n" for c, p in todo).encode(),
+            capture_output=True,
+        )
+    except OSError:
+        return  # changed_files asks git one commit at a time instead
+    if r.returncode != 0:
+        return
+    fields = r.stdout.decode("utf-8", "surrogateescape").split("\0")
+    if fields and fields[-1] == "":
+        fields.pop()
+    found: dict[str, list[str]] = {}
+    i = 0
+    for k, (c, _p) in enumerate(todo):
+        if i >= len(fields) or fields[i] != c:
+            return  # not the shape expected: no cache, no guess
+        i += 1
+        nxt = todo[k + 1][0] if k + 1 < len(todo) else None
+        names = []
+        while i < len(fields) and fields[i] != nxt:
+            names.append(fields[i])
+            i += 1
+        found[c] = names
+    for c, names in found.items():
+        _CHANGED[(root, c)] = names
 
 
 def changed_files(rev_range: str, cfg: Config = DEFAULT) -> list[str]:
     """Paths a range changes. `A..B` (or `A...B`) as git diff reads it; a single commit is its
     change from its first parent (a merge commit: what the pull request brought)."""
     if ".." in rev_range:
-        args = [rev_range]
-    else:
-        args = [f"{rev_range}^1", rev_range]
+        return _diff_names(cfg, rev_range)
+    if not FULL_SHA_RE.match(rev_range):  # a branch or tag moves: no cache
+        return _diff_names(cfg, f"{rev_range}^1", rev_range)
+    key = (str(cfg.root), rev_range)
+    if key not in _CHANGED:
+        _CHANGED[key] = _diff_names(cfg, f"{rev_range}^1", rev_range)
+    return list(_CHANGED[key])
+
+
+def _diff_names(cfg: Config, *args: str) -> list[str]:
     return [f for f in git(cfg, "diff", "--name-only", "--no-renames", *args, "--").split("\n") if f]
 
 
@@ -331,14 +548,17 @@ def trail_only(sha: str, cfg: Config = DEFAULT) -> bool:
 # ---- events, index, missing -----------------------------------------------------------
 
 
-def load_events(ref: str | None, cfg: Config = DEFAULT) -> tuple[list[Event], list[str]]:
+def load_events(ref: str | None, cfg: Config = DEFAULT, reader: ObjectReader | None = None) -> tuple[list[Event], list[str]]:
     events: list[Event] = []
     errs: list[str] = []
-    files = files_at(ref, cfg.events, cfg)
+    files = files_at(ref, cfg.events, cfg, reader)
     for path, text in files.items():
         if Path(path).name.lower() == "readme.md":
             continue
-        ev, e = event_from(path, text, cfg)
+        key = (cfg, path, text)
+        if key not in _EVENTS:
+            _EVENTS[key] = event_from(path, text, cfg)
+        ev, e = _EVENTS[key]
         errs += e
         if ev:
             events.append(ev)
@@ -366,8 +586,10 @@ def covered_prs(events: list[Event]) -> set[int]:
 
 def missing(ref: str, events: list[Event], cfg: Config = DEFAULT) -> list[tuple[int, str, str]]:
     covered = covered_prs(events)
+    merges = _merges(ref, cfg)
+    _prefetch_changed([(sha, parent) for n, sha, parent, _, _ in merges if n > cfg.missing_after and n not in covered], cfg)
     out = []
-    for n, sha, day, title in merged_prs(ref, cfg):
+    for n, sha, _parent, day, title in merges:
         if n > cfg.missing_after and n not in covered and not trail_only(sha, cfg):
             out.append((n, day, title))
     return sorted(out)
@@ -384,7 +606,9 @@ def missing_table(rows: list[tuple[int, str, str]]) -> str:
 # ---- snapshots ------------------------------------------------------------------------
 
 
-def check_snapshot(path: str, text: str, cfg: Config = DEFAULT, verify_git: bool = True) -> list[str]:
+def check_snapshot(
+    path: str, text: str, cfg: Config = DEFAULT, verify_git: bool = True, reader: ObjectReader | None = None
+) -> list[str]:
     try:
         doc = parse(path, text)
     except TrailError as e:
@@ -413,17 +637,19 @@ def check_snapshot(path: str, text: str, cfg: Config = DEFAULT, verify_git: bool
         return errs
     if not verify_git:
         return errs
-    try:
-        full = git(cfg, "rev-parse", "--verify", f"{sha}^{{commit}}").strip()
-    except TrailError:
+    if reader is None:
+        with ObjectReader(cfg) as own:
+            return check_snapshot(path, text, cfg, verify_git, own)
+    got = reader.get(f"{sha}^{{commit}}")
+    if got is None:
         return errs + [f"{path}: up_to_commit {sha} is no commit here (fetch with history)"]
-    try:
-        tagged = git(cfg, "rev-parse", "--verify", f"{tag}^{{commit}}").strip()
-        if tagged != full:
-            errs.append(f"{path}: up_to_commit {sha} is not {tag}'s commit ({tagged[:9]})")
-    except TrailError:
+    full = got[0]
+    tagged_obj = reader.get(f"{tag}^{{commit}}") if tag else None
+    if tagged_obj is None:
         errs.append(f"{path}: tag {tag} is not here (fetch tags)")
-    events, load_errs = load_events(full, cfg)
+    elif tagged_obj[0] != full:
+        errs.append(f"{path}: up_to_commit {sha} is not {tag}'s commit ({tagged_obj[0][:9]})")
+    events, load_errs = load_events(full, cfg, reader)
     errs += [f"{path}: the events at {sha} do not check: {x}" for x in load_errs[:3]]
     cites = set().union(*(ev.cites for ev in events)) if events else set()
     cite_re = cfg.cite_re
@@ -464,8 +690,20 @@ def check(cfg: Config = DEFAULT, verify_git: bool = True) -> list[str]:
     _events, errs = load_events(None, cfg)
     snaps, e = snapshots_at(cfg)
     errs += e
-    for path, text in snaps.items():
-        errs += check_snapshot(path, text, cfg, verify_git)
+    if verify_git and snaps:
+        with ObjectReader(cfg) as reader:
+            shas = []
+            for text in snaps.values():
+                m = re.search(r"^up_to_commit:\s*([0-9a-f]{7,40})\s*$", text, re.M)
+                got = reader.get(f"{m.group(1)}^{{commit}}") if m else None
+                if got is not None:
+                    shas.append(got[0])
+            _load_history(sorted(set(shas)), cfg)
+            for path, text in snaps.items():
+                errs += check_snapshot(path, text, cfg, verify_git, reader)
+    else:
+        for path, text in snaps.items():
+            errs += check_snapshot(path, text, cfg, verify_git)
     cur = cfg.root / cfg.current
     if snaps:
         newest = max(snaps, key=lambda p: _version(Path(p).stem, cfg))

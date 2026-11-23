@@ -33,11 +33,11 @@ was built (as "the Claude trail", Maktaba PRs #655 and #674). The formats are un
 There's no PyPI release yet (see [Releasing](#releasing)). Install from git:
 
 ```bash
-uv tool install git+https://github.com/Hamza-Labs-Core/agent-trail@v0.2.0   # puts `trail` on PATH
+uv tool install git+https://github.com/Hamza-Labs-Core/agent-trail@v0.2.1   # puts `trail` on PATH
 # or run it once
-uvx --from git+https://github.com/Hamza-Labs-Core/agent-trail@v0.2.0 trail check
+uvx --from git+https://github.com/Hamza-Labs-Core/agent-trail@v0.2.1 trail check
 # or with pip
-pip install git+https://github.com/Hamza-Labs-Core/agent-trail@v0.2.0
+pip install git+https://github.com/Hamza-Labs-Core/agent-trail@v0.2.1
 ```
 
 Once it's on PyPI: `uv tool install agent-trail`, or `uvx agent-trail check`. The command is

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "agent-trail"
-version = "0.2.0"
+version = "0.2.1"
 description = "Keep what coding-agent sessions learn in a repository: per-PR events, per-tag snapshots, and their checker"
 readme = "README.md"
 license = "MIT"
