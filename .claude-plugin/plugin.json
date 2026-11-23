@@ -1,7 +1,7 @@
 {
   "name": "trail",
   "displayName": "Agent trail",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "The agent trail for Claude Code: keep what coding-agent sessions learn in the repository (one event per merged pull request, a snapshot per tag), with a hook that reminds a session to write its events and the `trail` checker.",
   "author": {
     "name": "Hamza Labs",
